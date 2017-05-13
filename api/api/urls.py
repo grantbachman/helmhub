@@ -13,19 +13,25 @@ Including another URLconf
     1. Import the include() function: from django.conf.urls import url, include
     2. Add a URL to urlpatterns:  url(r'^blog/', include('blog.urls'))
 """
+from rest_framework_nested import routers
 from django.conf.urls import url, include
 from django.contrib import admin
 from rest_framework_jwt.views import obtain_jwt_token, refresh_jwt_token, verify_jwt_token
-from rest_framework.routers import DefaultRouter
 from . import views
 
-router = DefaultRouter(trailing_slash=False)
+router = routers.SimpleRouter(trailing_slash=False)
+router.register(r'charts', views.ChartViewSet)
+
+charts_router = routers.NestedSimpleRouter(router, r'charts', lookup='chart', trailing_slash=False)
+charts_router.register(r'versions', views.ChartVersionViewSet)
+
 
 urlpatterns = [
     url(r'^api-token-auth', obtain_jwt_token),
     url(r'^api-token-refresh', refresh_jwt_token),
     url(r'^api-token-verify', verify_jwt_token),
     url(r'^', include(router.urls)),
+    url(r'^', include(charts_router.urls)),
     url(r'^admin', admin.site.urls),
-    url(r'^upload/(?P<filename>[^/]+)$', views.FileUploadView.as_view())
+    #url(r'^upload/(?P<filename>[^/]+)$', views.FileUploadView.as_view())
 ]
