@@ -1,9 +1,10 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 from django.core.files.uploadedfile import SimpleUploadedFile
 from api.models import Profile, Chart, ChartVersion
+from django.conf import settings
 import tempfile
-import io
+import os
 
 
 class TestChart(TestCase):
@@ -30,22 +31,6 @@ class TestVersion(TestCase):
         self.chart = Chart(profile=user_profile)
         self.chart.save()
 
-    """
-    TODO: Make this an API Integration test so I can actually
-    override the default MEDIA ROOT
-
-    def test_create(self):
-        v = '0.1.0'
-        tmpdir = tempfile.TemporaryDirectory()
-        with self.settings(MEDIA_ROOT=tmpdir.name):
-            f = SimpleUploadedFile(f'test-{v}.tgz', b'Line 1\nLine 2')
-            version = ChartVersion(version=v, tgz=f, chart=self.chart)
-            version.save()
-        assert ChartVersion.objects.first() == version
-        import pdb; pdb.set_trace()
-        assert version.tgz is None
-    """
-
 
 class TestChartAPI(TestCase):
 
@@ -54,9 +39,10 @@ class TestChartAPI(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.client.login(username='testuser', password='testpassword')
+
         profile = Profile.objects.first()
-        chart = Chart(name='Test Chart', profile=profile)
-        self.chart = chart.save()
+        self.chart = Chart(name='Test Chart', profile=profile)
+        self.chart.save()
 
     def test_charts(self):
         assert Chart.objects.count() == 1
@@ -71,6 +57,23 @@ class TestChartAPI(TestCase):
         resp = self.client.get(f'/charts/{id_}')
         assert resp.status_code == 200
         assert resp.data.get('name') == 'Test Chart'
+
+    def test_upload_invalid_chart_id(self):
+        resp = self.client.post('/charts/999/upload', data={})
+        assert resp.status_code == 404
+
+    def test_upload_valid_chart(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with self.settings(MEDIA_ROOT=tmpdir):
+                with open('tests/fixtures/testchart-0.1.0.tgz', 'rb') as f:
+                    chart_id = self.chart.id
+                    resp = self.client.post(f'/charts/{chart_id}/upload', {'file': f}, format='multipart')
+            # File should be uploaded into charts subdir
+            assert os.path.isfile(os.path.join(tmpdir, 'charts/testchart-0.1.0.tgz'))
+        assert resp.status_code == 201
+        version = self.chart.versions.first()
+        # version should be parsed correctly
+        assert version.version == '0.1.0'
 
 
 class TestVersionAPI(TestCase):
